@@ -1,41 +1,20 @@
-const express = require('express');
-const cors = require('cors');
+// Thin local-dev entry point: runs the same Express app that gets deployed
+// as a Cloud Function (functions/app.js), as a plain Node process talking to
+// the Firestore Emulator. Nothing here ships to production.
 
-// Initializes firebase-admin against the local Firestore Emulator only.
-require('./firestore');
+const PROJECT_ID = process.env.GCLOUD_PROJECT || 'demo-shop-management';
+const EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || 'localhost:8090';
 
-const inventoryRouter = require('./routes/inventory');
-const salesOrdersRouter = require('./routes/salesOrders');
-const purchaseOrdersRouter = require('./routes/purchaseOrders');
-const transactionsRouter = require('./routes/transactions');
+// Must be set before requiring functions/app.js (which initializes
+// firebase-admin) so the Admin SDK routes requests to the emulator.
+process.env.FIRESTORE_EMULATOR_HOST = EMULATOR_HOST;
+process.env.GCLOUD_PROJECT = PROJECT_ID;
 
-const app = express();
+const app = require('../functions/app');
+
 const PORT = process.env.PORT || 4000;
-
-app.use(cors());
-app.use(express.json());
-
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', emulatorHost: process.env.FIRESTORE_EMULATOR_HOST });
-});
-
-app.use('/api/inventory', inventoryRouter);
-app.use('/api/sales-orders', salesOrdersRouter);
-app.use('/api/purchase-orders', purchaseOrdersRouter);
-app.use('/api/transactions', transactionsRouter);
-
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: `Not found: ${req.method} ${req.originalUrl}` });
-});
-
-// Central error handler (in case any route forwards an error via next(err))
-app.use((err, req, res, next) => {
-  console.error('Unhandled error', err);
-  res.status(500).json({ error: err.message || 'Internal server error' });
-});
 
 app.listen(PORT, () => {
   console.log(`Shop Management server listening on http://localhost:${PORT}`);
-  console.log(`Connected to Firestore emulator at ${process.env.FIRESTORE_EMULATOR_HOST}`);
+  console.log(`Connected to Firestore emulator at ${EMULATOR_HOST}`);
 });

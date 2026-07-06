@@ -7,7 +7,9 @@
     "emulator": "firebase emulators:start --only firestore",
     "server": "npm run start --prefix server",
     "client": "npm run dev --prefix client",
-    "install:all": "npm install && npm install --prefix server && npm install --prefix client"
+    "install:all": "npm install && npm install --prefix functions && npm install --prefix server && npm install --prefix client",
+    "build": "npm run build --prefix client",
+    "deploy": "npm run build && firebase deploy"
   },
   "devDependencies": {
     "firebase-tools": "^13.0.0"

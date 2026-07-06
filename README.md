@@ -13,12 +13,18 @@ requirements and approved it as ready to hand off.
 
 ## Tech stack
 
-- **Backend**: Node.js + Express, using `firebase-admin` talking ONLY to a local
-  **Firestore Emulator** (no real Firebase project, no billing, no login).
+- **Backend**: Node.js + Express (`functions/app.js`), using `firebase-admin`. The exact
+  same Express app runs two ways: as a plain Node process talking to the Firestore
+  Emulator for local dev (`server/index.js`), and as a single Cloud Function
+  (`functions/index.js`) behind Firebase Hosting in production — see
+  [Deploying to production Firebase](#deploying-to-production-firebase).
 - **Emulator**: `firebase-tools` (installed as a dev dependency), Firestore emulator
-  on port **8090**, Emulator UI on port **4010**. Project id: `demo-shop-management`.
+  on port **8090**, Emulator UI on port **4010**. Project id for local dev:
+  `demo-shop-management`.
 - **Frontend**: React + Vite, calling the backend via plain `fetch`. Plain CSS, no UI
-  framework. Dev server proxies `/api/*` to the backend.
+  framework. Dev server proxies `/api/*` to the backend locally; in production,
+  Firebase Hosting rewrites `/api/**` to the Cloud Function instead (same fetch code,
+  no changes needed).
 
 ## Ports
 
@@ -37,8 +43,8 @@ From the project root:
 npm run install:all
 ```
 
-This installs the root dev dependency (`firebase-tools`), the `server` dependencies,
-and the `client` dependencies.
+This installs the root dev dependency (`firebase-tools`), and the `functions`,
+`server`, and `client` dependencies.
 
 ## Running the app (3 terminals, in this order)
 
@@ -60,9 +66,10 @@ unless you pass `--export-on-exit`/`--import` flags yourself).
 npm run server
 ```
 
-This starts the Express API on http://localhost:4000 and connects to the emulator via
-the `FIRESTORE_EMULATOR_HOST` environment variable (defaults to `localhost:8090`,
-see `server/firestore.js`). You should see:
+This starts the Express API (`functions/app.js`, run as a plain Node process) on
+http://localhost:4000 and connects to the emulator via the `FIRESTORE_EMULATOR_HOST`
+environment variable (defaults to `localhost:8090`, see `server/index.js`). You should
+see:
 
 ```
 Shop Management server listening on http://localhost:4000
@@ -83,23 +90,77 @@ never needs to know the backend's host directly.
 
 Press `Ctrl+C` in each of the three terminals (frontend, backend, emulator).
 
+## Deploying to production Firebase
+
+The backend (`functions/`) deploys as a single Cloud Function; Firebase Hosting serves
+the built React app and rewrites `/api/**` to that function, so the frontend's existing
+`fetch('/api/...')` calls work unchanged in production — no frontend code changes needed.
+
+**One-time account/project setup (do this yourself, not scripted):**
+
+1. Re-authenticate the Firebase CLI if needed: `firebase login --reauth`.
+2. Create or choose a real Firebase project (console.firebase.google.com, or
+   `firebase projects:create <your-project-id>`).
+3. **Upgrade the project to the Blaze (pay-as-you-go) plan.** Cloud Functions require
+   it even if your usage stays within the free-tier limits — this can only be done from
+   the Firebase console (Settings → Usage and billing).
+4. Update `.firebaserc` — replace `demo-shop-management` with your real project ID.
+
+**Then deploy:**
+
+```sh
+npm run deploy
+```
+
+This builds the React app (`client/dist`) and runs `firebase deploy`, which pushes
+Firestore rules, the `api` Cloud Function, and Hosting together. Firebase prints the
+Hosting URL when it finishes.
+
+### What's different between local dev and production
+
+- **Firestore access**: `functions/firestore.js` calls `admin.initializeApp()` with no
+  arguments; the Firebase emulator suite and the Cloud Functions runtime both inject
+  the right project ID/credentials/emulator host automatically, so the exact same code
+  talks to the emulator locally and to real Firestore once deployed.
+- **Security**: `firestore.rules` denies all direct client reads/writes. This is safe
+  because the frontend never talks to Firestore directly — everything goes through the
+  Express API, which uses the Admin SDK and always bypasses rules regardless of what
+  they say.
+- **No authentication**: by explicit choice for now, the API has no login of any kind.
+  Once deployed, **anyone with the Hosting URL can create, edit, return, cancel, or
+  delete any inventory item, sales order, purchase order, or transaction.** This is fine
+  for a private/internal link or personal testing, but add real auth (Firebase
+  Authentication + verifying ID tokens in `functions/app.js`) before sharing the URL
+  more broadly or putting real business data through it.
+- **Local-only files**: `server/` is never deployed (it's not part of the `functions`
+  source and isn't referenced by `firebase.json`'s hosting/functions config) — it only
+  exists so you can run the backend as a plain Node process against the emulator
+  without needing the Cloud Functions emulator.
+
 ## Project layout
 
 ```
 shop-management-app/
-  firebase.json          Firestore emulator config (ports 8090 / UI 4400)
-  .firebaserc             Project alias -> demo-shop-management
-  firestore.rules         Open rules (emulator only, no real project ever touches this)
+  firebase.json          Firestore rules, functions source, hosting, emulator ports
+  .firebaserc             Project alias -> demo-shop-management (change before deploying)
+  firestore.rules         Denies all direct client access (backend uses the Admin SDK,
+                          which always bypasses rules)
   firestore.indexes.json  Empty indexes file required by firebase.json
-  package.json            Root scripts: emulator / server / client / install:all
-  server/                 Express app
-    index.js              App entry point, mounts routes, error handling
-    firestore.js          Initializes firebase-admin against the emulator only
+  package.json            Root scripts: emulator / server / client / install:all / build / deploy
+  functions/              Express app - the single source of truth for backend logic.
+                          Deployed as a Cloud Function; also required directly by
+                          server/index.js for local dev.
+    index.js              Cloud Functions entry point: wraps app.js with onRequest()
+    app.js                The Express app itself (routes, middleware, no listen())
+    firestore.js          Initializes firebase-admin (auto-detects emulator vs. prod)
     routes/
       inventory.js
       salesOrders.js
       purchaseOrders.js
       transactions.js
+  server/                 Thin local-dev entry point only - not deployed
+    index.js              Sets FIRESTORE_EMULATOR_HOST, requires ../functions/app.js,
+                          calls .listen()
   client/                 Vite + React app
     src/
       main.jsx
