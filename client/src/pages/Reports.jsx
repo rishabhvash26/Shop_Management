@@ -13,6 +13,28 @@ function money(n) {
   return `$${Number(n || 0).toFixed(2)}`;
 }
 
+// Payments are recorded at the order level, not per line item, so a partially-paid
+// order's paid/due amounts are allocated across its still-outstanding products
+// proportionally to each product's remaining (post-return) value.
+function productPaymentBreakdown(order) {
+  const remaining = order.items
+    .map((li) => {
+      const remainingQty = Number(li.qty) - Number(li.returnedQty || 0);
+      const netUnitPrice = Number(li.lineTotal) / Number(li.qty);
+      return { ...li, remainingQty, currentValue: netUnitPrice * remainingQty };
+    })
+    .filter((li) => li.remainingQty > 0);
+
+  const orderTotal = Number(order.total) || 0;
+  const amountPaid = Number(order.amountPaid) || 0;
+  const amountDue = Number(order.amountDue) || 0;
+
+  return remaining.map((li) => {
+    const share = orderTotal > 0 ? li.currentValue / orderTotal : 0;
+    return { ...li, paid: share * amountPaid, due: share * amountDue };
+  });
+}
+
 export default function Reports() {
   const [tab, setTab] = useState('sales');
   const [inventory, setInventory] = useState([]);
@@ -605,24 +627,35 @@ export default function Reports() {
                               <thead>
                                 <tr>
                                   <th>Order ID</th>
-                                  <th>Date</th>
-                                  <th>Payment Method</th>
-                                  <th>Total</th>
-                                  <th>Amount Due</th>
+                                  <th>Product</th>
+                                  <th>Qty</th>
+                                  <th>Line Value</th>
+                                  <th>Paid</th>
+                                  <th>Pending</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {c.orders.map((o) => (
-                                  <tr key={o.id}>
-                                    <td>{o.id}</td>
-                                    <td>{new Date(o.date).toLocaleString()}</td>
-                                    <td>{o.paymentMethod}</td>
-                                    <td>{money(o.total)}</td>
-                                    <td>{money(o.amountDue)}</td>
-                                  </tr>
+                                  <Fragment key={o.id}>
+                                    {productPaymentBreakdown(o).map((li) => (
+                                      <tr key={`${o.id}-${li.productId}`}>
+                                        <td>{o.id}</td>
+                                        <td>{li.name}</td>
+                                        <td>{li.remainingQty}</td>
+                                        <td>{money(li.currentValue)}</td>
+                                        <td>{money(li.paid)}</td>
+                                        <td>{money(li.due)}</td>
+                                      </tr>
+                                    ))}
+                                  </Fragment>
                                 ))}
                               </tbody>
                             </table>
+                            <p className="muted" style={{ marginTop: '0.5rem' }}>
+                              Paid/Pending per product is estimated by splitting each order's payment
+                              proportionally across its remaining items (payments are recorded per
+                              order, not per line item).
+                            </p>
                           </div>
                         </td>
                       </tr>
