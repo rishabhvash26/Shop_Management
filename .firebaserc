@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "demo-shop-management"
+    "default": "demo-shop-management",
+    "production": "dhandha-8c820"
   }
 }

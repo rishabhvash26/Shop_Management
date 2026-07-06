@@ -6,3 +6,4 @@ ui-debug.log
 *.log
 client/dist/
 .env
+.claude/
