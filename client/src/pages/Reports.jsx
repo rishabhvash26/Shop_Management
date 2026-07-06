@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { downloadCSV } from '../utils.js';
 
@@ -24,6 +24,8 @@ export default function Reports() {
   const [salesFilters, setSalesFilters] = useState({ from: '', to: '', paymentMethod: '', status: '', customerName: '' });
   const [purchaseFilters, setPurchaseFilters] = useState({ from: '', to: '', paymentMethod: '', status: '', supplierName: '' });
   const [inventoryFilters, setInventoryFilters] = useState({ category: '', lowStockOnly: false });
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [expandedCustomer, setExpandedCustomer] = useState(null);
 
   async function load() {
     try {
@@ -90,6 +92,31 @@ export default function Reports() {
     [inventory, inventoryFilters]
   );
 
+  const customerBalances = useMemo(() => {
+    const byCustomer = new Map();
+    for (const o of salesOrders) {
+      const due = Number(o.amountDue || 0);
+      if (due <= 0) continue;
+      if (customerSearch && !o.customerName.toLowerCase().includes(customerSearch.toLowerCase())) continue;
+
+      const entry = byCustomer.get(o.customerName) || {
+        customerName: o.customerName,
+        totalDue: 0,
+        orderCount: 0,
+        oldestDate: o.date,
+        orders: [],
+      };
+      entry.totalDue += due;
+      entry.orderCount += 1;
+      entry.orders.push(o);
+      if (new Date(o.date) < new Date(entry.oldestDate)) entry.oldestDate = o.date;
+      byCustomer.set(o.customerName, entry);
+    }
+    return [...byCustomer.values()].sort((a, b) => b.totalDue - a.totalDue);
+  }, [salesOrders, customerSearch]);
+
+  const totalReceivable = customerBalances.reduce((s, c) => s + c.totalDue, 0);
+
   const salesTotals = filteredSales.reduce(
     (acc, o) => {
       acc.revenue += Number(o.total);
@@ -153,6 +180,19 @@ export default function Reports() {
     );
   }
 
+  function exportReceivables() {
+    downloadCSV(
+      'customer-outstanding-report.csv',
+      [
+        { key: 'customerName', label: 'Customer' },
+        { key: 'orderCount', label: 'Orders Outstanding' },
+        { key: 'totalDue', label: 'Total Owed' },
+        { key: 'oldestDate', label: 'Oldest Outstanding Since' },
+      ],
+      customerBalances
+    );
+  }
+
   function exportInventory() {
     downloadCSV(
       'inventory-report.csv',
@@ -182,6 +222,9 @@ export default function Reports() {
         </button>
         <button className={tab === 'inventory' ? '' : 'secondary'} onClick={() => setTab('inventory')}>
           Inventory
+        </button>
+        <button className={tab === 'receivables' ? '' : 'secondary'} onClick={() => setTab('receivables')}>
+          Outstanding by Customer
         </button>
       </div>
 
@@ -489,6 +532,106 @@ export default function Reports() {
                 {filteredInventory.length === 0 && (
                   <tr>
                     <td colSpan={7} className="muted">No products match these filters.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {!loading && tab === 'receivables' && (
+        <>
+          <div className="panel">
+            <h3>Filters</h3>
+            <div className="form-row">
+              <label>
+                Customer
+                <input value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} placeholder="Search by name" />
+              </label>
+            </div>
+          </div>
+
+          <div className="summary-cards">
+            <div className="summary-card out">
+              <h3>Total Outstanding</h3>
+              <div className="value">{money(totalReceivable)}</div>
+            </div>
+            <div className="summary-card net">
+              <h3>Customers with a Balance</h3>
+              <div className="value">{customerBalances.length}</div>
+            </div>
+          </div>
+
+          <div className="panel">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3>{customerBalances.length} customer(s) owe money</h3>
+              <button className="small secondary" onClick={exportReceivables} disabled={customerBalances.length === 0}>
+                Export CSV
+              </button>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Customer</th>
+                  <th>Orders Outstanding</th>
+                  <th>Total Owed</th>
+                  <th>Outstanding Since</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {customerBalances.map((c) => (
+                  <Fragment key={c.customerName}>
+                    <tr>
+                      <td>{c.customerName}</td>
+                      <td>{c.orderCount}</td>
+                      <td>{money(c.totalDue)}</td>
+                      <td>{new Date(c.oldestDate).toLocaleDateString()}</td>
+                      <td>
+                        <button
+                          className="small secondary"
+                          onClick={() => setExpandedCustomer(expandedCustomer === c.customerName ? null : c.customerName)}
+                        >
+                          {expandedCustomer === c.customerName ? 'Hide' : 'View orders'}
+                        </button>
+                      </td>
+                    </tr>
+                    {expandedCustomer === c.customerName && (
+                      <tr>
+                        <td colSpan={5}>
+                          <div className="inline-panel">
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>Order ID</th>
+                                  <th>Date</th>
+                                  <th>Payment Method</th>
+                                  <th>Total</th>
+                                  <th>Amount Due</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {c.orders.map((o) => (
+                                  <tr key={o.id}>
+                                    <td>{o.id}</td>
+                                    <td>{new Date(o.date).toLocaleString()}</td>
+                                    <td>{o.paymentMethod}</td>
+                                    <td>{money(o.total)}</td>
+                                    <td>{money(o.amountDue)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+                {customerBalances.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="muted">No outstanding balances right now.</td>
                   </tr>
                 )}
               </tbody>
