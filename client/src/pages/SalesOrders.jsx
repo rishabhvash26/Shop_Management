@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import { buildSalesBillPDF, pdfPreviewUrl, downloadPDF } from '../pdf.js';
+import { INDIAN_STATES } from '../indianStates.js';
 
 function emptyLine() {
   return { productId: '', qty: '1', discountPercent: '0' };
@@ -22,6 +24,7 @@ const PAYMENT_BADGE = {
 export default function SalesOrders() {
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
+  const [settings, setSettings] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(true);
@@ -30,6 +33,9 @@ export default function SalesOrders() {
   const [customerName, setCustomerName] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [taxPercent, setTaxPercent] = useState('0');
+  const [invoiceType, setInvoiceType] = useState('non_gst');
+  const [customerGSTIN, setCustomerGSTIN] = useState('');
+  const [customerState, setCustomerState] = useState('');
   const [lines, setLines] = useState([emptyLine()]);
 
   const [returnPanelId, setReturnPanelId] = useState(null);
@@ -50,9 +56,14 @@ export default function SalesOrders() {
   async function load() {
     try {
       setLoading(true);
-      const [ordersData, productsData] = await Promise.all([api.getSalesOrders(), api.getInventory()]);
+      const [ordersData, productsData, settingsData] = await Promise.all([
+        api.getSalesOrders(),
+        api.getInventory(),
+        api.getSettings(),
+      ]);
       setOrders(ordersData);
       setProducts(productsData);
+      setSettings(settingsData);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -83,6 +94,9 @@ export default function SalesOrders() {
     setCustomerName('');
     setPaymentMethod('cash');
     setTaxPercent('0');
+    setInvoiceType('non_gst');
+    setCustomerGSTIN('');
+    setCustomerState(settings ? settings.state : '');
     setLines([emptyLine()]);
   }
 
@@ -93,6 +107,9 @@ export default function SalesOrders() {
     setCustomerName(order.customerName);
     setPaymentMethod(order.paymentMethod || 'cash');
     setTaxPercent(String(order.taxPercent || 0));
+    setInvoiceType(order.invoiceType || 'non_gst');
+    setCustomerGSTIN(order.customerGSTIN || '');
+    setCustomerState(order.customerState || (settings ? settings.state : ''));
     setLines(
       order.items.map((it) => ({
         productId: it.productId,
@@ -116,8 +133,20 @@ export default function SalesOrders() {
       setError('Customer name and at least one valid line item are required.');
       return;
     }
+    if (invoiceType === 'gst' && !customerState) {
+      setError('Customer state is required for a GST invoice.');
+      return;
+    }
 
-    const payload = { customerName, paymentMethod, taxPercent: Number(taxPercent) || 0, items };
+    const payload = {
+      customerName,
+      paymentMethod,
+      taxPercent: Number(taxPercent) || 0,
+      invoiceType,
+      customerGSTIN: invoiceType === 'gst' ? customerGSTIN : '',
+      customerState: invoiceType === 'gst' ? customerState : '',
+      items,
+    };
 
     try {
       if (editingOrderId) {
@@ -226,6 +255,8 @@ export default function SalesOrders() {
     }
   }
 
+  const gstAvailable = Boolean(settings && settings.gstRegistered);
+
   return (
     <div className="page">
       <h2>Sales Orders</h2>
@@ -250,20 +281,73 @@ export default function SalesOrders() {
               </select>
             </label>
             <label>
-              Tax %
-              <input type="number" min="0" max="100" step="0.01" value={taxPercent} onChange={(e) => setTaxPercent(e.target.value)} />
+              Invoice type
+              <select
+                value={invoiceType}
+                onChange={(e) => {
+                  setInvoiceType(e.target.value);
+                  if (e.target.value === 'gst' && !customerState && settings) {
+                    setCustomerState(settings.state);
+                  }
+                }}
+              >
+                <option value="non_gst">Non-GST (Bill of Supply)</option>
+                {gstAvailable && <option value="gst">GST (Tax Invoice)</option>}
+              </select>
             </label>
           </div>
 
+          {!gstAvailable && (
+            <p className="muted">
+              GST invoicing is off because your shop isn't marked GST-registered. Turn it on in{' '}
+              <Link to="/settings">Settings</Link>.
+            </p>
+          )}
+
+          {invoiceType === 'gst' ? (
+            <div className="form-row">
+              <label>
+                Customer GSTIN <span className="muted">(optional, for B2B)</span>
+                <input
+                  value={customerGSTIN}
+                  onChange={(e) => setCustomerGSTIN(e.target.value.toUpperCase())}
+                  placeholder="e.g. 27BBBBB1111B1Z3"
+                  maxLength={15}
+                />
+              </label>
+              <label>
+                Customer state
+                <select value={customerState} onChange={(e) => setCustomerState(e.target.value)} required>
+                  <option value="">Select state...</option>
+                  {INDIAN_STATES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : (
+            <div className="form-row">
+              <label>
+                Tax %
+                <input type="number" min="0" max="100" step="0.01" value={taxPercent} onChange={(e) => setTaxPercent(e.target.value)} />
+              </label>
+            </div>
+          )}
+
           <div>
-            <label style={{ marginBottom: '0.4rem' }}>Line items</label>
+            <label style={{ marginBottom: '0.4rem' }}>
+              Line items {invoiceType === 'gst' && <span className="muted">(GST rate comes from each product's own setting)</span>}
+            </label>
             {lines.map((line, idx) => (
               <div className="line-item-row" key={idx}>
                 <select value={line.productId} onChange={(e) => updateLine(idx, 'productId', e.target.value)} required>
                   <option value="">Select product...</option>
                   {products.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} (in stock: {p.quantity}, ${Number(p.unitPrice).toFixed(2)})
+                      {p.name} (in stock: {p.quantity}, ${Number(p.unitPrice).toFixed(2)}
+                      {invoiceType === 'gst' ? `, GST ${p.gstRate || 0}%` : ''})
                     </option>
                   ))}
                 </select>
@@ -314,6 +398,7 @@ export default function SalesOrders() {
               <th>Customer</th>
               <th>Date</th>
               <th>Items</th>
+              <th>Invoice</th>
               <th>Total</th>
               <th>Payment</th>
               <th>Status</th>
@@ -325,6 +410,7 @@ export default function SalesOrders() {
               const canEdit = o.status === 'completed' && !(o.paymentMethod === 'credit' && o.amountPaid > 0);
               const canReturnOrCancel = o.status === 'completed' || o.status === 'partially_returned';
               const canPay = o.amountDue > 0 && o.status !== 'returned' && o.status !== 'canceled';
+              const isGst = o.invoiceType === 'gst';
               return (
                 <Fragment key={o.id}>
                   <tr>
@@ -332,6 +418,16 @@ export default function SalesOrders() {
                     <td>{o.customerName}</td>
                     <td>{new Date(o.date).toLocaleString()}</td>
                     <td>{o.items.map((it) => `${it.name} x${it.qty}`).join(', ')}</td>
+                    <td>
+                      <span className={`badge ${isGst ? 'completed' : 'neutral'}`}>{isGst ? 'GST' : 'Non-GST'}</span>
+                      {isGst && (
+                        <div className="muted">
+                          {o.isIntraState
+                            ? `CGST $${Number(o.cgstTotal || 0).toFixed(2)} + SGST $${Number(o.sgstTotal || 0).toFixed(2)}`
+                            : `IGST $${Number(o.igstTotal || 0).toFixed(2)}`}
+                        </div>
+                      )}
+                    </td>
                     <td>
                       ${Number(o.total).toFixed(2)}
                       {o.totalRefunded > 0 && <div className="muted">refunded ${Number(o.totalRefunded).toFixed(2)}</div>}
@@ -374,7 +470,7 @@ export default function SalesOrders() {
                   </tr>
                   {returnPanelId === o.id && (
                     <tr>
-                      <td colSpan={8}>
+                      <td colSpan={9}>
                         <div className="inline-panel">
                           <div className="form-row">
                             {o.items
@@ -409,7 +505,7 @@ export default function SalesOrders() {
                   )}
                   {paymentPanelId === o.id && (
                     <tr>
-                      <td colSpan={8}>
+                      <td colSpan={9}>
                         <div className="inline-panel">
                           <div className="form-row">
                             <label>
@@ -441,7 +537,7 @@ export default function SalesOrders() {
             })}
             {orders.length === 0 && !loading && (
               <tr>
-                <td colSpan={8} className="muted">No sales orders yet.</td>
+                <td colSpan={9} className="muted">No sales orders yet.</td>
               </tr>
             )}
           </tbody>

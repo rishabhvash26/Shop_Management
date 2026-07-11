@@ -5,6 +5,7 @@ import SalesOrders from './pages/SalesOrders.jsx';
 import PurchaseOrders from './pages/PurchaseOrders.jsx';
 import Transactions from './pages/Transactions.jsx';
 import Reports from './pages/Reports.jsx';
+import Settings from './pages/Settings.jsx';
 
 export default function App() {
   return (
@@ -30,6 +31,9 @@ export default function App() {
           <NavLink to="/reports" className={({ isActive }) => (isActive ? 'active' : '')}>
             Reports
           </NavLink>
+          <NavLink to="/settings" className={({ isActive }) => (isActive ? 'active' : '')}>
+            Settings
+          </NavLink>
         </nav>
       </header>
       <main className="content">
@@ -41,6 +45,7 @@ export default function App() {
           <Route path="/purchase-orders" element={<PurchaseOrders />} />
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/reports" element={<Reports />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
     </div>

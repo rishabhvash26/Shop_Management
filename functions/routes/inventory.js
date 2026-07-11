@@ -15,6 +15,15 @@ function toNumber(value, fieldName) {
   return n;
 }
 
+function toGstRate(value) {
+  if (value === undefined || value === null || value === '') return 0;
+  const n = Number(value);
+  if (Number.isNaN(n) || n < 0 || n > 100) {
+    throw new Error('Field "gstRate" must be a number between 0 and 100');
+  }
+  return n;
+}
+
 function serialize(doc) {
   const data = doc.data();
   const quantity = Number(data.quantity) || 0;
@@ -28,6 +37,8 @@ function serialize(doc) {
     unitPrice: Number(data.unitPrice) || 0,
     lowStockThreshold,
     isLowStock: quantity <= lowStockThreshold,
+    hsnCode: data.hsnCode || '',
+    gstRate: Number(data.gstRate) || 0,
     createdAt: data.createdAt || null,
     updatedAt: data.updatedAt || null,
   };
@@ -48,13 +59,14 @@ router.get('/', async (req, res) => {
 // POST /api/inventory
 router.post('/', async (req, res) => {
   try {
-    const { sku, name, category } = req.body;
+    const { sku, name, category, hsnCode } = req.body;
     if (!sku || !name) {
       return res.status(400).json({ error: 'Fields "sku" and "name" are required' });
     }
     const quantity = toNumber(req.body.quantity, 'quantity');
     const unitPrice = toNumber(req.body.unitPrice, 'unitPrice');
     const lowStockThreshold = toNumber(req.body.lowStockThreshold, 'lowStockThreshold');
+    const gstRate = toGstRate(req.body.gstRate);
 
     const now = new Date().toISOString();
     const docRef = await db.collection(COLLECTION).add({
@@ -64,6 +76,8 @@ router.post('/', async (req, res) => {
       quantity,
       unitPrice,
       lowStockThreshold,
+      hsnCode: hsnCode || '',
+      gstRate,
       createdAt: now,
       updatedAt: now,
     });
@@ -85,7 +99,7 @@ router.put('/:id', async (req, res) => {
     }
 
     const updates = { updatedAt: new Date().toISOString() };
-    const { sku, name, category, quantity, unitPrice, lowStockThreshold } = req.body;
+    const { sku, name, category, quantity, unitPrice, lowStockThreshold, hsnCode, gstRate } = req.body;
     if (sku !== undefined) updates.sku = sku;
     if (name !== undefined) updates.name = name;
     if (category !== undefined) updates.category = category;
@@ -94,6 +108,8 @@ router.put('/:id', async (req, res) => {
     if (lowStockThreshold !== undefined) {
       updates.lowStockThreshold = toNumber(lowStockThreshold, 'lowStockThreshold');
     }
+    if (hsnCode !== undefined) updates.hsnCode = hsnCode;
+    if (gstRate !== undefined) updates.gstRate = toGstRate(gstRate);
 
     await ref.update(updates);
     const doc = await ref.get();

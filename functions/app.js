@@ -7,6 +7,7 @@ const inventoryRouter = require('./routes/inventory');
 const salesOrdersRouter = require('./routes/salesOrders');
 const purchaseOrdersRouter = require('./routes/purchaseOrders');
 const transactionsRouter = require('./routes/transactions');
+const settingsRouter = require('./routes/settings');
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.use('/api/inventory', inventoryRouter);
 app.use('/api/sales-orders', salesOrdersRouter);
 app.use('/api/purchase-orders', purchaseOrdersRouter);
 app.use('/api/transactions', transactionsRouter);
+app.use('/api/settings', settingsRouter);
 
 // 404 handler
 app.use((req, res) => {

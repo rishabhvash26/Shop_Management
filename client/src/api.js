@@ -47,4 +47,8 @@ export const api = {
   // Transactions
   getTransactions: (date) => request(`/transactions${date ? `?date=${date}` : ''}`),
   createTransaction: (data) => request('/transactions', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Settings (shop profile / GST registration)
+  getSettings: () => request('/settings'),
+  updateSettings: (data) => request('/settings', { method: 'PUT', body: JSON.stringify(data) }),
 };

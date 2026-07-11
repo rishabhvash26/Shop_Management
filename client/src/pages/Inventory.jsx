@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 
-const emptyForm = { sku: '', name: '', category: '', quantity: '', unitPrice: '', lowStockThreshold: '' };
+const emptyForm = {
+  sku: '',
+  name: '',
+  category: '',
+  quantity: '',
+  unitPrice: '',
+  lowStockThreshold: '',
+  hsnCode: '',
+  gstRate: '',
+};
 
 export default function Inventory() {
   const [items, setItems] = useState([]);
@@ -44,6 +53,8 @@ export default function Inventory() {
         quantity: Number(form.quantity),
         unitPrice: Number(form.unitPrice),
         lowStockThreshold: Number(form.lowStockThreshold),
+        hsnCode: form.hsnCode,
+        gstRate: form.gstRate === '' ? 0 : Number(form.gstRate),
       });
       setForm(emptyForm);
       setSuccess(`Added "${form.name}" to inventory.`);
@@ -75,6 +86,8 @@ export default function Inventory() {
       quantity: String(item.quantity),
       unitPrice: String(item.unitPrice),
       lowStockThreshold: String(item.lowStockThreshold),
+      hsnCode: item.hsnCode || '',
+      gstRate: String(item.gstRate || 0),
     });
   }
 
@@ -99,6 +112,8 @@ export default function Inventory() {
         quantity: Number(editForm.quantity),
         unitPrice: Number(editForm.unitPrice),
         lowStockThreshold: Number(editForm.lowStockThreshold),
+        hsnCode: editForm.hsnCode,
+        gstRate: editForm.gstRate === '' ? 0 : Number(editForm.gstRate),
       });
       setSuccess(`Updated "${editForm.name}".`);
       setEditingId(null);
@@ -148,6 +163,16 @@ export default function Inventory() {
               <input name="lowStockThreshold" type="number" min="0" value={form.lowStockThreshold} onChange={handleChange} required />
             </label>
           </div>
+          <div className="form-row">
+            <label>
+              HSN/SAC code <span className="muted">(for GST invoices)</span>
+              <input name="hsnCode" value={form.hsnCode} onChange={handleChange} placeholder="e.g. 8517" />
+            </label>
+            <label>
+              GST rate % <span className="muted">(for GST invoices)</span>
+              <input name="gstRate" type="number" min="0" max="100" step="0.01" value={form.gstRate} onChange={handleChange} placeholder="e.g. 18" />
+            </label>
+          </div>
           <div>
             <button type="submit">Add Product</button>
           </div>
@@ -165,6 +190,8 @@ export default function Inventory() {
               <th>Quantity</th>
               <th>Unit Price</th>
               <th>Low Stock Threshold</th>
+              <th>HSN/SAC</th>
+              <th>GST %</th>
               <th>Status</th>
               <th></th>
             </tr>
@@ -173,7 +200,7 @@ export default function Inventory() {
             {items.map((item) => (
               editingId === item.id ? (
                 <tr key={item.id} className={item.isLowStock ? 'low-stock' : ''}>
-                  <td colSpan={8}>
+                  <td colSpan={10}>
                     <form className="form-row" onSubmit={(e) => handleEditSubmit(e, item.id)}>
                       <input name="sku" value={editForm.sku} onChange={handleEditChange} required />
                       <input name="name" value={editForm.name} onChange={handleEditChange} required />
@@ -203,6 +230,17 @@ export default function Inventory() {
                         onChange={handleEditChange}
                         required
                       />
+                      <input name="hsnCode" value={editForm.hsnCode} onChange={handleEditChange} placeholder="HSN/SAC" />
+                      <input
+                        name="gstRate"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={editForm.gstRate}
+                        onChange={handleEditChange}
+                        placeholder="GST %"
+                      />
                       <button type="submit" className="small">
                         Save
                       </button>
@@ -220,6 +258,8 @@ export default function Inventory() {
                   <td>{item.quantity}</td>
                   <td>${Number(item.unitPrice).toFixed(2)}</td>
                   <td>{item.lowStockThreshold}</td>
+                  <td>{item.hsnCode}</td>
+                  <td>{item.gstRate ? `${item.gstRate}%` : ''}</td>
                   <td>
                     {item.isLowStock ? (
                       <span className="badge danger">LOW STOCK</span>
@@ -240,7 +280,7 @@ export default function Inventory() {
             ))}
             {items.length === 0 && !loading && (
               <tr>
-                <td colSpan={8} className="muted">No products yet.</td>
+                <td colSpan={10} className="muted">No products yet.</td>
               </tr>
             )}
           </tbody>
