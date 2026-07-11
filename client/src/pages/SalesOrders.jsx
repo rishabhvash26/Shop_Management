@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { api } from '../api.js';
+import { generateSalesBillPDF } from '../pdf.js';
 
 function emptyLine() {
   return { productId: '', qty: '1', discountPercent: '0' };
@@ -114,7 +115,8 @@ export default function SalesOrders() {
         setSuccess(`Sales order ${editingOrderId} updated.`);
       } else {
         const order = await api.createSalesOrder(payload);
-        setSuccess(`Sales order ${order.id} created. Total: $${order.total.toFixed(2)}`);
+        generateSalesBillPDF(order);
+        setSuccess(`Sales order ${order.id} created. Total: $${order.total.toFixed(2)}. Bill PDF downloaded.`);
       }
       resetForm();
       load();
@@ -317,6 +319,9 @@ export default function SalesOrders() {
                     </td>
                     <td>
                       <div className="action-group">
+                        <button className="small secondary" onClick={() => generateSalesBillPDF(o)}>
+                          Bill
+                        </button>
                         {canEdit && (
                           <button className="small" onClick={() => startEdit(o)}>
                             Edit
