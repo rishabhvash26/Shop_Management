@@ -1,6 +1,6 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
-import { generateSalesBillPDF } from '../pdf.js';
+import { buildSalesBillPDF, pdfPreviewUrl, downloadPDF } from '../pdf.js';
 
 function emptyLine() {
   return { productId: '', qty: '1', discountPercent: '0' };
@@ -36,6 +36,16 @@ export default function SalesOrders() {
   const [returnQtys, setReturnQtys] = useState({});
   const [paymentPanelId, setPaymentPanelId] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState('');
+
+  const [billPreview, setBillPreview] = useState(null); // { doc, url, filename }
+  const billPreviewRef = useRef(null);
+  billPreviewRef.current = billPreview;
+
+  useEffect(() => {
+    return () => {
+      if (billPreviewRef.current) URL.revokeObjectURL(billPreviewRef.current.url);
+    };
+  }, []);
 
   async function load() {
     try {
@@ -115,14 +125,31 @@ export default function SalesOrders() {
         setSuccess(`Sales order ${editingOrderId} updated.`);
       } else {
         const order = await api.createSalesOrder(payload);
-        generateSalesBillPDF(order);
-        setSuccess(`Sales order ${order.id} created. Total: $${order.total.toFixed(2)}. Bill PDF downloaded.`);
+        showBillPreview(order);
+        setSuccess(`Sales order ${order.id} created. Total: $${order.total.toFixed(2)}.`);
       }
       resetForm();
       load();
     } catch (err) {
       setError(err.message);
     }
+  }
+
+  function showBillPreview(order) {
+    if (billPreview) URL.revokeObjectURL(billPreview.url);
+    const doc = buildSalesBillPDF(order);
+    setBillPreview({ doc, url: pdfPreviewUrl(doc), filename: `invoice-${order.id}.pdf` });
+  }
+
+  function closeBillPreview() {
+    if (billPreview) URL.revokeObjectURL(billPreview.url);
+    setBillPreview(null);
+  }
+
+  function confirmDownloadBill() {
+    if (!billPreview) return;
+    downloadPDF(billPreview.doc, billPreview.filename);
+    closeBillPreview();
   }
 
   async function handleCancelOrder(order) {
@@ -319,7 +346,7 @@ export default function SalesOrders() {
                     </td>
                     <td>
                       <div className="action-group">
-                        <button className="small secondary" onClick={() => generateSalesBillPDF(o)}>
+                        <button className="small secondary" onClick={() => showBillPreview(o)}>
                           Bill
                         </button>
                         {canEdit && (
@@ -420,6 +447,26 @@ export default function SalesOrders() {
           </tbody>
         </table>
       </div>
+
+      {billPreview && (
+        <div className="modal-overlay" onClick={closeBillPreview}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Bill Preview</h3>
+              <button className="small secondary" onClick={closeBillPreview}>
+                Close
+              </button>
+            </div>
+            <iframe src={billPreview.url} title="Bill preview" />
+            <div className="action-group" style={{ marginTop: '0.75rem' }}>
+              <button onClick={confirmDownloadBill}>Download PDF</button>
+              <button className="secondary" onClick={closeBillPreview}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

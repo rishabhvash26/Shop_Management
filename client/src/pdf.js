@@ -5,10 +5,11 @@ function money(n) {
   return `$${Number(n || 0).toFixed(2)}`;
 }
 
-// Builds a one-page sales invoice PDF for the given order and triggers a
-// browser download. `order` is the full response returned by the sales-order
-// create/get endpoints (items, totals, payment fields all already computed).
-export function generateSalesBillPDF(order) {
+// Builds a one-page sales invoice as a jsPDF document. `order` is the full
+// response returned by the sales-order create/get endpoints (items, totals,
+// payment fields all already computed). Does not save/download anything -
+// callers decide whether to preview it, download it, or both.
+export function buildSalesBillPDF(order) {
   const doc = new jsPDF();
 
   doc.setFontSize(18);
@@ -55,5 +56,15 @@ export function generateSalesBillPDF(order) {
     doc.text(`Amount Due: ${money(order.amountDue)}`, 140, y);
   }
 
-  doc.save(`invoice-${order.id}.pdf`);
+  return doc;
+}
+
+// Object URLs (blob:) can be pointed at directly by an <iframe> for an
+// in-browser preview. Caller is responsible for revoking it when done.
+export function pdfPreviewUrl(doc) {
+  return URL.createObjectURL(doc.output('blob'));
+}
+
+export function downloadPDF(doc, filename) {
+  doc.save(filename);
 }
